@@ -3,564 +3,706 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuizForge - Local PDF to MCQ</title>
-    
+    <title>QuizForge - Advanced Local PDF Parser</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <style>
-        body { background-color: #080A11; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
-        .glass-panel { background: rgba(15, 20, 35, 0.6); border: 1px solid rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); }
+        body { background-color: #080A11; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
+        .glass-panel { background: rgba(15, 20, 35, 0.7); border: 1px solid rgba(255, 255, 255, 0.05); backdrop-filter: blur(12px); }
         .text-gradient { background: linear-gradient(135deg, #a855f7, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .drop-zone { border: 2px dashed #334155; transition: all 0.2s; }
-        .drop-zone.dragover { border-color: #a855f7; background: rgba(168, 85, 247, 0.05); }
+        .drop-zone { border: 2px dashed #334155; transition: all 0.3s ease; }
+        .drop-zone.dragover { border-color: #a855f7; background: rgba(168, 85, 247, 0.1); box-shadow: 0 0 30px rgba(168, 85, 247, 0.2); }
         
-        /* 3D Flashcard Styles */
+        /* Custom Range Slider */
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #e2e8f0; border: 3px solid #6b7280; cursor: pointer; margin-top: -6px; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: linear-gradient(90deg, #6366f1 50%, #334155 50%); border-radius: 2px; }
+        
+        /* Number Inputs */
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { opacity: 1; }
+        
+        /* 3D Flashcards */
         .perspective-1000 { perspective: 1000px; }
         .transform-style-3d { transform-style: preserve-3d; }
         .backface-hidden { backface-visibility: hidden; }
         .rotate-y-180 { transform: rotateY(180deg); }
         
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #080A11; }
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .layout-container { display: flex; height: 100vh; width: 100vw; }
+        .sidebar { width: 300px; min-width: 300px; border-right: 1px solid rgba(255,255,255,0.05); background: #0B0F19; display: flex; flex-direction: column; }
+        .main-content { flex: 1; overflow-y: auto; position: relative; display: flex; flex-direction: column; align-items: center; padding: 2rem; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col items-center py-10 px-4 overflow-x-hidden">
+<body>
 
-    <div class="glass-panel w-full max-w-5xl rounded-2xl p-6 mb-8 hidden md:grid grid-cols-4 gap-4 text-xs">
-        <div class="col-span-4 text-slate-400 mb-2 flex justify-between items-center border-b border-slate-800 pb-2">
-            <span class="font-bold text-white tracking-wide">ARCHITECTURE & TECH STACK</span>
-            <button class="hover:text-white" onclick="this.parentElement.parentElement.style.display='none'">✕</button>
+<div class="layout-container">
+    
+    <div class="sidebar">
+        <div class="p-6 border-b border-slate-800 flex items-center gap-3">
+            <div class="bg-[#a855f7] bg-opacity-20 p-2 rounded-xl">
+                <svg class="w-6 h-6 text-[#d8b4fe]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <h2 class="text-xl font-bold text-gradient">QuizForge</h2>
         </div>
-        <div class="bg-[#111626] p-4 rounded-xl border border-slate-800 hover:border-purple-500 transition-colors">
-            <div class="text-purple-400 mb-1 font-bold flex items-center gap-2"><span>⚛</span> Frontend UI</div>
-            <div class="text-slate-500">HTML5 + Tailwind CSS + Vanilla JS. Virtual DOM rendering for 1200+ elements.</div>
+        <div class="p-4 flex-1 overflow-y-auto">
+            <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Library Memories</h3>
+            <div id="historyList" class="flex flex-col gap-2">
+                </div>
         </div>
-        <div class="bg-[#111626] p-4 rounded-xl border border-slate-800 hover:border-blue-500 transition-colors">
-            <div class="text-blue-400 mb-1 font-bold flex items-center gap-2"><span>📄</span> PDF Parsing</div>
-            <div class="text-slate-500">pdfjs-dist with Async Yielding. Batch processes 200MB+ without freezing.</div>
-        </div>
-        <div class="bg-[#111626] p-4 rounded-xl border border-slate-800 hover:border-pink-500 transition-colors">
-            <div class="text-pink-400 mb-1 font-bold flex items-center gap-2"><span>🧠</span> NLP Engine</div>
-            <div class="text-slate-500">Custom RegEx heuristics (Definitions, Dates, Entities). 100% offline, zero AI cost.</div>
-        </div>
-        <div class="bg-[#111626] p-4 rounded-xl border border-slate-800 hover:border-green-500 transition-colors">
-            <div class="text-green-400 mb-1 font-bold flex items-center gap-2"><span>📊</span> Data Management</div>
-            <div class="text-slate-500">Distractor pooling for MCQs. SheetJS for bulk Excel/CSV exporting.</div>
+        <div class="p-4 border-t border-slate-800">
+            <button onclick="resetToUpload()" class="w-full py-2 bg-[#131B2C] hover:bg-[#1A233A] border border-slate-700 rounded-lg text-sm text-slate-300 transition-colors flex justify-center items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                New Document
+            </button>
         </div>
     </div>
 
-    <main id="uploadView" class="w-full max-w-4xl flex flex-col items-center text-center mt-2 transition-all duration-500">
+    <div class="main-content" id="mainArea">
         
-        <div class="bg-[#a855f7] bg-opacity-20 p-4 rounded-2xl mb-6 shadow-[0_0_30px_rgba(168,85,247,0.2)]">
-            <svg class="w-8 h-8 text-[#d8b4fe]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-        </div>
-        <h1 class="text-5xl font-bold mb-4 text-gradient tracking-tight">QuizForge</h1>
-        <p class="text-slate-400 max-w-2xl text-lg mb-8">
-            Upload any massive PDF — textbooks, manuals, or research papers — and instantly generate thousands of interactive MCQs and Flashcards locally.
-        </p>
-
-        <div class="flex flex-wrap justify-center gap-3 mb-10">
-            <span class="glass-panel px-4 py-1.5 rounded-full text-xs text-slate-300 shadow-sm">✦ Up to 200MB</span>
-            <span class="glass-panel px-4 py-1.5 rounded-full text-xs text-slate-300 shadow-sm">✦ 1000+ Pages</span>
-            <span class="glass-panel px-4 py-1.5 rounded-full text-xs text-slate-300 shadow-sm">✦ Batched Processing</span>
-            <span class="glass-panel px-4 py-1.5 rounded-full text-xs text-slate-300 shadow-sm">✦ Interactive Quiz Mode</span>
-            <span class="glass-panel px-4 py-1.5 rounded-full text-xs text-slate-300 shadow-sm">✦ 3D Flashcards</span>
-            <span class="glass-panel px-4 py-1.5 rounded-full text-xs text-slate-300 shadow-sm">✦ Export CSV/Excel</span>
-        </div>
-
-        <div class="w-full relative group">
-            <input type="file" id="fileInput" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" accept=".pdf" />
-            <div id="dropZoneUI" class="drop-zone bg-[#0C111D] rounded-2xl p-16 flex flex-col items-center justify-center relative overflow-hidden group-hover:border-purple-500">
-                <div class="bg-[#1A233A] p-5 rounded-full mb-6 group-hover:scale-110 transition-transform shadow-lg">
-                    <svg class="w-10 h-10 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-                </div>
-                <h3 class="text-2xl font-semibold mb-2 text-white">Drop your massive PDF here</h3>
-                <p class="text-blue-400 mb-6 font-medium">or <span class="underline">browse to upload</span></p>
-                <div class="flex gap-6 text-xs text-slate-500 font-medium">
-                    <span>📄 PDF formats only</span>
-                    <span>•</span>
-                    <span>Optimized for > 1000 pages</span>
-                    <span>•</span>
-                    <span>Local Processing</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="w-full bg-[#0C111D] border border-slate-800 rounded-xl mt-6 flex flex-col text-sm text-slate-300 overflow-hidden">
-            <div class="p-4 flex justify-between items-center bg-[#131B2C]">
-                <div class="flex items-center gap-2 font-semibold">
-                    <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                    Parser Engine Settings
-                </div>
-                <div class="bg-purple-500 bg-opacity-20 px-3 py-1 rounded-full text-purple-300 text-xs font-bold border border-purple-500/30">
-                    Heuristic Mode Active
-                </div>
-            </div>
-            <div class="p-4 grid grid-cols-2 md:grid-cols-4 gap-4 bg-[#0A0E17]">
-                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked class="accent-purple-500 w-4 h-4"> Definitional Match</label>
-                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked class="accent-purple-500 w-4 h-4"> Date Extraction</label>
-                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked class="accent-purple-500 w-4 h-4"> Fill-in-the-Blank</label>
-                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked class="accent-purple-500 w-4 h-4"> Strict Casing</label>
-            </div>
-        </div>
-    </main>
-
-    <main id="processingView" class="hidden w-full max-w-2xl flex flex-col items-center mt-20">
-        <div class="glass-panel w-full p-10 rounded-2xl text-center border-t-4 border-t-purple-500">
-            <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mb-6"></div>
-            <h2 class="text-3xl font-bold mb-2" id="processTitle">Analyzing Document Pipeline...</h2>
-            <p class="text-slate-400 mb-8" id="processSubtitle">Extracting text and pooling distractors.</p>
+        <div id="uploadView" class="w-full max-w-4xl flex flex-col items-center mt-4 transition-all duration-500">
             
-            <div class="w-full bg-slate-800 rounded-full h-3 mb-2 overflow-hidden shadow-inner">
-                <div class="bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full transition-all duration-300" id="progressBar" style="width: 0%"></div>
-            </div>
-            <div class="flex justify-between text-xs text-slate-500 font-mono mt-2" id="progressMetrics">
-                <span>0 Pages</span>
-                <span>0 Questions Found</span>
-            </div>
-        </div>
-    </main>
+            <h1 class="text-4xl font-bold mb-3 text-white text-center">Upload & Extract</h1>
+            <p class="text-slate-400 text-center max-w-2xl text-md mb-8">
+                Upload massive PDFs (1000+ pages). Instantly generate thousands of interactive MCQs and Flashcards locally.
+            </p>
 
-    <main id="dashboardView" class="hidden w-full max-w-6xl flex flex-col mt-4">
-        <div class="flex flex-wrap justify-between items-end mb-6 border-b border-slate-800 pb-4">
-            <div>
-                <h2 class="text-3xl font-bold text-white mb-1">Your Knowledge Base</h2>
-                <p class="text-slate-400 text-sm">Generated <span id="dashQCount" class="text-purple-400 font-bold">0</span> questions from document.</p>
-            </div>
-            <div class="flex gap-2 mt-4 md:mt-0">
-                <button onclick="switchTab('quiz')" class="dash-tab px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-semibold transition-colors active" id="tab-quiz">Quiz Mode</button>
-                <button onclick="switchTab('flashcard')" class="dash-tab px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-semibold transition-colors" id="tab-flashcard">Flashcards</button>
-                <button onclick="switchTab('editor')" class="dash-tab px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-semibold transition-colors" id="tab-editor">Data Editor</button>
-                <button onclick="exportData()" class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                    Export
-                </button>
-            </div>
-        </div>
-
-        <div id="content-quiz" class="flex-col items-center w-full max-w-3xl mx-auto">
-            <div class="glass-panel w-full p-8 rounded-2xl relative overflow-hidden">
-                <div class="absolute top-0 left-0 w-full h-1 bg-slate-800">
-                    <div id="quizProgress" class="h-1 bg-purple-500 transition-all duration-300" style="width: 0%"></div>
-                </div>
-                <div class="flex justify-between text-xs text-slate-400 font-mono mb-6">
-                    <span id="quizCounter">Q 1 / 100</span>
-                    <span id="quizType" class="bg-blue-500/20 text-blue-300 px-2 py-1 rounded">Type</span>
-                </div>
-                <h3 class="text-2xl font-semibold mb-8" id="quizQuestionText">Loading question...</h3>
-                <div class="grid grid-cols-1 gap-3" id="quizOptions">
+            <div class="w-full relative group mb-8">
+                <input type="file" id="fileInput" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" accept=".pdf" />
+                <div id="dropZoneUI" class="drop-zone bg-[#0C111D] rounded-2xl p-12 flex flex-col items-center justify-center relative overflow-hidden group-hover:border-purple-500">
+                    <div class="bg-[#1A233A] p-4 rounded-full mb-4 shadow-lg">
+                        <svg class="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
                     </div>
-                <div id="quizFeedback" class="mt-6 hidden p-4 rounded-lg font-semibold text-center"></div>
-                <div class="mt-8 flex justify-end">
-                    <button onclick="nextQuizQuestion()" class="px-6 py-2 bg-white text-black font-bold rounded-lg hover:bg-slate-200 hidden" id="nextQuizBtn">Next Question →</button>
+                    <h3 class="text-xl font-semibold mb-2 text-white">Drop your massive PDF here</h3>
+                    <p class="text-blue-400 mb-4 font-medium text-sm">or <span class="underline">browse to upload</span></p>
+                    <div class="flex gap-4 text-xs text-slate-500 font-medium bg-[#0A0E17] px-4 py-2 rounded-full border border-slate-800">
+                        <span>📄 PDF formats only</span><span>•</span><span>Optimized for > 1000 pages</span><span>•</span><span>100% Local</span>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div id="content-flashcard" class="hidden flex-col items-center w-full">
-            <div class="flex items-center justify-center gap-8 w-full mt-10">
-                <button onclick="prevFlashcard()" class="p-3 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button>
-                
-                <div class="perspective-1000 cursor-pointer" onclick="this.querySelector('.card-inner').classList.toggle('rotate-y-180')">
-                    <div class="card-inner relative w-[32rem] h-80 transition-transform duration-500 transform-style-3d">
-                        <div class="absolute inset-0 bg-gradient-to-br from-[#1A233A] to-[#0C111D] border border-slate-700 p-8 rounded-2xl backface-hidden flex flex-col justify-center items-center text-center shadow-xl">
-                            <span class="absolute top-4 left-4 text-xs font-bold text-slate-500 uppercase">Question</span>
-                            <p class="text-2xl text-white font-medium" id="fcQuestion">Question text here?</p>
-                            <span class="absolute bottom-4 text-xs text-slate-500">Click to flip</span>
-                        </div>
-                        <div class="absolute inset-0 bg-gradient-to-br from-purple-900 to-[#1A233A] border border-purple-500 p-8 rounded-2xl backface-hidden rotate-y-180 flex flex-col justify-center items-center text-center shadow-[0_0_40px_rgba(168,85,247,0.2)]">
-                            <span class="absolute top-4 left-4 text-xs font-bold text-purple-300 uppercase">Answer</span>
-                            <p class="text-3xl text-white font-bold" id="fcAnswer">Answer text here</p>
-                        </div>
+            <div class="w-full bg-[#0C111D] border border-slate-800 rounded-xl flex flex-col text-sm text-slate-300 overflow-hidden shadow-2xl">
+                <div class="p-4 flex justify-between items-center bg-[#131B2C] border-b border-slate-800">
+                    <div class="flex items-center gap-2 font-semibold">
+                        <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                        Generation Settings
+                    </div>
+                    <div class="bg-purple-500/20 px-3 py-1 rounded-full text-purple-300 text-xs font-bold border border-purple-500/30">
+                        ~840 questions estimated
                     </div>
                 </div>
 
-                <button onclick="nextFlashcard()" class="p-3 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg></button>
+                <div class="p-6 bg-[#0A0E17] border-b border-slate-800">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="font-bold flex items-center gap-2 text-yellow-500">✦ <span class="text-slate-200">Questions per text chunk</span></span>
+                        <span class="text-2xl font-bold text-white" id="sliderValDisplay">7</span>
+                    </div>
+                    <input type="range" id="chunkSlider" min="2" max="15" value="7" class="w-full mb-2" oninput="updateSliderTrack(this)">
+                    <div class="flex justify-between text-xs text-slate-500">
+                        <span>2 (faster)</span>
+                        <span>15 (more comprehensive)</span>
+                    </div>
+                </div>
+
+                <div class="p-6 bg-[#0A0E17] border-b border-slate-800">
+                    <p class="font-bold text-slate-200 mb-4">Difficulty Distribution</p>
+                    <div class="grid grid-cols-3 gap-4">
+                        <div class="bg-[#111626] border-t-2 border-t-green-500 border border-slate-800 rounded-lg p-3">
+                            <span class="text-xs text-green-500 font-bold block mb-1">Easy</span>
+                            <div class="flex items-end justify-between">
+                                <input type="number" id="diffEasy" value="30" class="bg-transparent text-2xl font-bold text-white w-16 outline-none">
+                                <span class="text-slate-500 font-bold">%</span>
+                            </div>
+                        </div>
+                        <div class="bg-[#111626] border-t-2 border-t-yellow-500 border border-slate-800 rounded-lg p-3">
+                            <span class="text-xs text-yellow-500 font-bold block mb-1">Medium</span>
+                            <div class="flex items-end justify-between">
+                                <input type="number" id="diffMed" value="50" class="bg-transparent text-2xl font-bold text-white w-16 outline-none">
+                                <span class="text-slate-500 font-bold">%</span>
+                            </div>
+                        </div>
+                        <div class="bg-[#111626] border-t-2 border-t-red-500 border border-slate-800 rounded-lg p-3">
+                            <span class="text-xs text-red-500 font-bold block mb-1">Hard</span>
+                            <div class="flex items-end justify-between">
+                                <input type="number" id="diffHard" value="20" class="bg-transparent text-2xl font-bold text-white w-16 outline-none">
+                                <span class="text-slate-500 font-bold">%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex items-start gap-2 text-xs text-slate-500 bg-[#131B2C] p-3 rounded-lg border border-slate-800">
+                        <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <p>For a 1000-page book, expect ~240 text chunks at default settings. With 5 questions/chunk, that yields <strong>~1,200 questions</strong>. Questions include definitions, fill-in-the-blank, factual recall, and numerical data.</p>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-[#131B2C] flex justify-between items-center">
+                    <span class="font-bold flex items-center gap-2"><svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg> Parser Engine Settings</span>
+                    <span class="bg-purple-900/30 text-purple-400 text-xs px-2 py-1 rounded border border-purple-800">Heuristic Mode Active</span>
+                </div>
+                <div class="p-4 grid grid-cols-2 md:grid-cols-4 gap-4 bg-[#0A0E17]">
+                    <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="chkDef" checked class="accent-purple-500 w-4 h-4"> Definitional Match</label>
+                    <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="chkDate" checked class="accent-purple-500 w-4 h-4"> Date Extraction</label>
+                    <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="chkBlank" checked class="accent-purple-500 w-4 h-4"> Fill-in-the-Blank</label>
+                    <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="chkStrict" checked class="accent-purple-500 w-4 h-4"> Strict Casing</label>
+                </div>
             </div>
-            <div class="mt-8 text-slate-500 font-mono text-sm" id="fcCounter">Card 1 / 100</div>
         </div>
 
-        <div id="content-editor" class="hidden flex-col w-full glass-panel rounded-2xl overflow-hidden">
-            <div class="overflow-x-auto max-h-[600px]">
-                <table class="w-full text-left text-sm text-slate-300">
-                    <thead class="text-xs uppercase bg-[#131B2C] text-slate-400 sticky top-0">
-                        <tr>
-                            <th class="px-6 py-4">Type</th>
-                            <th class="px-6 py-4">Question</th>
-                            <th class="px-6 py-4 text-green-400">Correct Answer</th>
-                            <th class="px-6 py-4">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="editorTableBody" class="divide-y divide-slate-800">
-                        </tbody>
-                </table>
-            </div>
-        </div>
-
-    </main>
-
-    <footer class="mt-auto pt-16 pb-4 w-full max-w-5xl flex justify-between text-xs text-slate-500 font-medium">
-        <div class="flex items-center gap-2">
-            <div class="w-5 h-5 bg-purple-600 rounded flex items-center justify-center text-white font-bold text-[10px]">Q</div>
-            QuizForge — 100% Local Browser Engine.
-        </div>
-        <div class="hidden md:flex gap-4">
-            <span class="hover:text-slate-300 cursor-pointer">React-less Virtual DOM</span>
-            <span class="text-slate-700">•</span>
-            <span class="hover:text-slate-300 cursor-pointer">pdfjs-dist</span>
-            <span class="text-slate-700">•</span>
-            <span class="hover:text-slate-300 cursor-pointer">SheetJS Export</span>
-        </div>
-    </footer>
-
-    <script>
-        // Setup PDF.js Worker
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-
-        // State Management
-        let appState = {
-            questions: [],
-            distractorPool: new Set(),
-            quizIndex: 0,
-            fcIndex: 0,
-            score: 0
-        };
-
-        // DOM Elements
-        const views = {
-            upload: document.getElementById('uploadView'),
-            processing: document.getElementById('processingView'),
-            dashboard: document.getElementById('dashboardView')
-        };
-        const dom = {
-            fileInput: document.getElementById('fileInput'),
-            dropZone: document.getElementById('dropZoneUI'),
-            progBar: document.getElementById('progressBar'),
-            progMetrics: document.getElementById('progressMetrics'),
-            processSubtitle: document.getElementById('processSubtitle')
-        };
-
-        // ----------------------------------------------------
-        // 1. FILE UPLOAD & PIPELINE INITIATION
-        // ----------------------------------------------------
-        dom.fileInput.addEventListener('dragenter', () => dom.dropZone.classList.add('border-purple-500', 'bg-purple-900/10'));
-        dom.fileInput.addEventListener('dragleave', () => dom.dropZone.classList.remove('border-purple-500', 'bg-purple-900/10'));
-        dom.fileInput.addEventListener('drop', () => dom.dropZone.classList.remove('border-purple-500', 'bg-purple-900/10'));
-
-        dom.fileInput.addEventListener('change', async function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            views.upload.classList.add('hidden');
-            views.processing.classList.remove('hidden');
-
-            try {
-                const arrayBuffer = await file.arrayBuffer();
-                await executePipeline(arrayBuffer);
-            } catch (err) {
-                alert("Error processing file: " + err.message);
-                location.reload();
-            }
-        });
-
-        // ----------------------------------------------------
-        // 2. SCALABLE PDF BATCH PROCESSING
-        // ----------------------------------------------------
-        async function executePipeline(buffer) {
-            const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-            const totalPages = pdf.numPages;
-            
-            // Scalability: We do NOT store all text in memory. We chunk it.
-            let chunkedText = "";
-            const CHUNK_SIZE = 20; // Process 20 pages at a time
-
-            for (let i = 1; i <= totalPages; i++) {
-                dom.progMetrics.innerHTML = `<span>Page ${i} of ${totalPages}</span><span>${appState.questions.length} Questions</span>`;
-                dom.progBar.style.width = `${(i / totalPages) * 100}%`;
-
-                const page = await pdf.getPage(i);
-                const content = await page.getTextContent();
-                const pageText = content.items.map(item => item.str).join(' ');
+        <div id="processingView" class="hidden w-full max-w-2xl flex-col items-center mt-20">
+            <div class="glass-panel w-full p-10 rounded-2xl text-center border-t-4 border-t-purple-500 shadow-2xl">
+                <div class="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-purple-500 mb-6"></div>
+                <h2 class="text-3xl font-bold mb-2 text-white" id="processTitle">Processing Document...</h2>
+                <p class="text-slate-400 mb-8" id="processSubtitle">Extracting text and running heuristic NLP.</p>
                 
-                chunkedText += " " + pageText;
+                <div class="w-full bg-slate-800 rounded-full h-4 mb-2 overflow-hidden shadow-inner">
+                    <div class="bg-gradient-to-r from-purple-500 to-pink-500 h-4 rounded-full transition-all duration-300 relative" id="progressBar" style="width: 0%">
+                        <div class="absolute inset-0 bg-white/20" style="background-image: linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent); background-size: 1rem 1rem; animation: progress-stripes 1s linear infinite;"></div>
+                    </div>
+                </div>
+                <div class="flex justify-between text-xs text-slate-500 font-mono mt-3" id="progressMetrics">
+                    <span>Reading page chunks...</span>
+                    <span id="qFoundCounter">0 Qs Found</span>
+                </div>
+            </div>
+        </div>
 
-                // When chunk is full, run NLP and clear memory
-                if (i % CHUNK_SIZE === 0 || i === totalPages) {
-                    dom.processSubtitle.innerText = "Running Regex NLP on chunk...";
-                    
-                    // Yield to browser UI thread to prevent freezing
-                    await new Promise(resolve => setTimeout(resolve, 50)); 
-                    
-                    extractQuestions(chunkedText);
-                    chunkedText = ""; // Clear memory!
-                }
-            }
+        <div id="dashboardView" class="hidden w-full max-w-5xl flex-col pb-10">
+            <div class="flex flex-wrap justify-between items-end mb-6 border-b border-slate-800 pb-6 mt-4">
+                <div>
+                    <h2 class="text-4xl font-bold text-white mb-2" id="dashTitle">Document Name</h2>
+                    <div class="flex gap-3 text-sm">
+                        <span class="bg-purple-900/30 text-purple-400 border border-purple-800 px-3 py-1 rounded-full"><span id="dashQCount" class="font-bold">0</span> Questions Generated</span>
+                        <span class="bg-slate-800 text-slate-300 px-3 py-1 rounded-full" id="dashDate">Date</span>
+                    </div>
+                </div>
+                <div class="flex gap-2 mt-4 md:mt-0">
+                    <button onclick="switchTab('quiz')" class="dash-tab px-5 py-2.5 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-bold shadow-lg transition-colors active" id="tab-quiz">Quiz Player</button>
+                    <button onclick="switchTab('flashcard')" class="dash-tab px-5 py-2.5 bg-[#131B2C] border border-slate-700 hover:bg-slate-800 rounded-lg text-sm font-bold shadow-lg transition-colors" id="tab-flashcard">3D Flashcards</button>
+                    <button onclick="switchTab('editor')" class="dash-tab px-5 py-2.5 bg-[#131B2C] border border-slate-700 hover:bg-slate-800 rounded-lg text-sm font-bold shadow-lg transition-colors" id="tab-editor">Database Editor</button>
+                    <button onclick="exportData()" class="px-5 py-2.5 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-bold shadow-lg transition-colors flex items-center gap-2 text-white">
+                        Export CSV/Excel
+                    </button>
+                </div>
+            </div>
 
-            finalizePipeline();
+            <div id="content-quiz" class="flex-col items-center w-full max-w-3xl mx-auto mt-4">
+                <div class="glass-panel w-full p-10 rounded-3xl relative overflow-hidden shadow-2xl">
+                    <div class="absolute top-0 left-0 w-full h-1.5 bg-slate-800">
+                        <div id="quizProgress" class="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                    <div class="flex justify-between items-center text-sm font-bold text-slate-400 mb-8">
+                        <span id="quizCounter" class="bg-[#111626] px-3 py-1 rounded-lg border border-slate-700">Q 1 / 100</span>
+                        <div class="flex gap-2">
+                            <span id="quizDiff" class="px-2 py-1 rounded-md">Difficulty</span>
+                            <span id="quizType" class="bg-blue-500/20 text-blue-400 px-2 py-1 rounded-md border border-blue-500/30">Type</span>
+                        </div>
+                    </div>
+                    <h3 class="text-3xl font-medium mb-10 leading-snug text-white" id="quizQuestionText">Loading question...</h3>
+                    <div class="grid grid-cols-1 gap-4" id="quizOptions"></div>
+                    <div id="quizFeedback" class="mt-8 hidden p-5 rounded-xl font-bold text-center text-lg"></div>
+                    <div class="mt-8 flex justify-end">
+                        <button onclick="nextQuizQuestion()" class="px-8 py-3 bg-white text-black font-bold rounded-xl hover:bg-slate-200 hidden shadow-xl transition-transform active:scale-95" id="nextQuizBtn">Next Question →</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="content-flashcard" class="hidden flex-col items-center w-full mt-8">
+                <div class="flex items-center justify-center gap-12 w-full">
+                    <button onclick="prevFlashcard()" class="p-4 bg-[#131B2C] border border-slate-700 hover:bg-slate-800 rounded-full transition-colors shadow-lg"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button>
+                    
+                    <div class="perspective-1000 cursor-pointer" onclick="this.querySelector('.card-inner').classList.toggle('rotate-y-180')">
+                        <div class="card-inner relative w-[40rem] h-[24rem] transition-transform duration-700 transform-style-3d shadow-2xl">
+                            <div class="absolute inset-0 bg-[#1A233A] border border-slate-700 p-10 rounded-3xl backface-hidden flex flex-col justify-center items-center text-center">
+                                <span class="absolute top-6 left-6 text-sm font-bold text-purple-400 uppercase tracking-widest">Question</span>
+                                <p class="text-3xl text-white font-medium leading-relaxed" id="fcQuestion">Question text here?</p>
+                                <span class="absolute bottom-6 text-sm text-slate-500 flex items-center gap-2"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/></svg> Click to reveal answer</span>
+                            </div>
+                            <div class="absolute inset-0 bg-gradient-to-br from-purple-900 to-[#1A233A] border border-purple-500 p-10 rounded-3xl backface-hidden rotate-y-180 flex flex-col justify-center items-center text-center shadow-[0_0_50px_rgba(168,85,247,0.3)]">
+                                <span class="absolute top-6 left-6 text-sm font-bold text-pink-400 uppercase tracking-widest">Answer</span>
+                                <p class="text-4xl text-white font-bold" id="fcAnswer">Answer text here</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button onclick="nextFlashcard()" class="p-4 bg-[#131B2C] border border-slate-700 hover:bg-slate-800 rounded-full transition-colors shadow-lg"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg></button>
+                </div>
+                <div class="mt-10 text-slate-400 font-bold bg-[#111626] px-6 py-2 rounded-full border border-slate-800 text-lg" id="fcCounter">Card 1 / 100</div>
+            </div>
+
+            <div id="content-editor" class="hidden flex-col w-full glass-panel rounded-2xl overflow-hidden mt-4 shadow-2xl border border-slate-800">
+                <div class="overflow-y-auto max-h-[700px]">
+                    <table class="w-full text-left text-sm text-slate-300">
+                        <thead class="text-xs uppercase bg-[#0A0E17] text-slate-400 sticky top-0 z-10 shadow-md border-b border-slate-800">
+                            <tr>
+                                <th class="px-6 py-5">Type / Diff</th>
+                                <th class="px-6 py-5">Question</th>
+                                <th class="px-6 py-5 text-green-400">Correct Answer</th>
+                                <th class="px-6 py-5 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="editorTableBody" class="divide-y divide-slate-800 bg-[#131B2C]">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<style>
+    @keyframes progress-stripes { from { background-position: 1rem 0; } to { background-position: 0 0; } }
+</style>
+
+<script>
+    // -------------------------------------------------------------------
+    // INIT: Libraries & DB
+    // -------------------------------------------------------------------
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    localforage.config({ name: 'QuizForgeDB', storeName: 'memories' });
+
+    // State
+    let appState = {
+        currentDeckId: null,
+        currentDocName: "",
+        questions: [],
+        distractorPool: new Set(),
+        quizIndex: 0,
+        fcIndex: 0
+    };
+
+    // DOM Links
+    const views = {
+        upload: document.getElementById('uploadView'),
+        processing: document.getElementById('processingView'),
+        dashboard: document.getElementById('dashboardView')
+    };
+
+    // Boot
+    window.onload = async () => {
+        await loadSidebarMemories();
+        updateSliderTrack(document.getElementById('chunkSlider'));
+    };
+
+    // -------------------------------------------------------------------
+    // UI: Settings Sliders
+    // -------------------------------------------------------------------
+    function updateSliderTrack(el) {
+        document.getElementById('sliderValDisplay').innerText = el.value;
+        const percent = ((el.value - el.min) / (el.max - el.min)) * 100;
+        el.style.background = `linear-gradient(90deg, #6366f1 ${percent}%, #334155 ${percent}%)`;
+    }
+
+    // -------------------------------------------------------------------
+    // PERSISTENCE: "Memories" like a text app
+    // -------------------------------------------------------------------
+    async function loadSidebarMemories() {
+        const listEl = document.getElementById('historyList');
+        listEl.innerHTML = '';
+        
+        let keys = await localforage.keys();
+        if(keys.length === 0) {
+            listEl.innerHTML = `<p class="text-xs text-slate-600 italic px-2">No saved memories yet.</p>`;
+            return;
         }
 
-        // ----------------------------------------------------
-        // 3. NO-AI HEURISTIC NLP ENGINE
-        // ----------------------------------------------------
-        function extractQuestions(text) {
-            // Clean text (remove multiple spaces, fix common PDF parsing breaks)
-            const cleanText = text.replace(/\s+/g, ' ').replace(/(?<=[a-z])-\s+(?=[a-z])/g, "");
-            const sentences = cleanText.match(/[A-Z][^.!?]+[.!?]+/g) || [];
+        // Sort keys by timestamp descending (assuming keys are IDs like "deck_1234567")
+        keys.sort((a,b) => b.split('_')[1] - a.split('_')[1]);
 
-            // Regex Patterns
-            const defRegex = /(?:The\s+)?([A-Z][a-z0-9_-]+(?:\s[A-Z][a-z0-9_-]+)*)\s+(?:is|refers to|can be defined as|is known as)\s+([^.]{20,150})\./;
-            const dateRegex = /\b(in|during)\s+(1[4-9]\d{2}|20\d{2})\b/;
+        for(let key of keys) {
+            const deck = await localforage.getItem(key);
+            const div = document.createElement('div');
+            div.className = `p-3 rounded-xl cursor-pointer border transition-colors ${appState.currentDeckId === key ? 'bg-purple-900/40 border-purple-500' : 'bg-[#131B2C] border-slate-800 hover:border-slate-500'}`;
+            div.onclick = () => loadDeck(key);
+            div.innerHTML = `
+                <div class="font-bold text-slate-200 text-sm truncate">${deck.name}</div>
+                <div class="flex justify-between text-xs text-slate-500 mt-2 font-medium">
+                    <span>${deck.questions.length} Qs</span>
+                    <span>${deck.dateStr}</span>
+                </div>
+            `;
+            listEl.appendChild(div);
+        }
+    }
 
-            sentences.forEach(sentence => {
-                // Heuristic 1: Definitions
-                const defMatch = sentence.match(defRegex);
-                if (defMatch && defMatch[1].length < 35) {
-                    appState.distractorPool.add(defMatch[1]); // Build distractor pool dynamically
+    async function saveCurrentDeck() {
+        const deckId = appState.currentDeckId || `deck_${Date.now()}`;
+        const deck = {
+            id: deckId,
+            name: appState.currentDocName,
+            dateStr: new Date().toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'}),
+            questions: appState.questions
+        };
+        await localforage.setItem(deckId, deck);
+        appState.currentDeckId = deckId;
+        await loadSidebarMemories();
+    }
+
+    async function loadDeck(deckId) {
+        const deck = await localforage.getItem(deckId);
+        if(!deck) return;
+        
+        appState.currentDeckId = deck.id;
+        appState.currentDocName = deck.name;
+        appState.questions = deck.questions;
+        appState.quizIndex = 0;
+        appState.fcIndex = 0;
+
+        views.upload.classList.add('hidden');
+        views.processing.classList.add('hidden');
+        views.dashboard.classList.remove('hidden');
+        
+        document.getElementById('dashTitle').innerText = deck.name;
+        document.getElementById('dashQCount').innerText = deck.questions.length;
+        document.getElementById('dashDate').innerText = deck.dateStr;
+
+        initDashboard();
+        await loadSidebarMemories(); // Refresh selection styling
+    }
+
+    function resetToUpload() {
+        appState.currentDeckId = null;
+        appState.questions = [];
+        appState.currentDocName = "";
+        views.dashboard.classList.add('hidden');
+        views.processing.classList.add('hidden');
+        views.upload.classList.remove('hidden');
+        loadSidebarMemories();
+    }
+
+    // -------------------------------------------------------------------
+    // UPLOAD & BATCH PROCESSING PIPELINE
+    // -------------------------------------------------------------------
+    const fileInput = document.getElementById('fileInput');
+    const dropZoneUI = document.getElementById('dropZoneUI');
+
+    fileInput.addEventListener('dragenter', () => dropZoneUI.classList.add('dragover'));
+    fileInput.addEventListener('dragleave', () => dropZoneUI.classList.remove('dragover'));
+    fileInput.addEventListener('drop', () => dropZoneUI.classList.remove('dragover'));
+
+    fileInput.addEventListener('change', async function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        appState.currentDocName = file.name.replace('.pdf', '');
+        appState.questions = [];
+        appState.distractorPool.clear();
+
+        views.upload.classList.add('hidden');
+        views.processing.classList.remove('hidden');
+
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            await processPDFInBatches(arrayBuffer);
+        } catch (err) {
+            alert("Error: " + err.message);
+            resetToUpload();
+        }
+    });
+
+    async function processPDFInBatches(buffer) {
+        const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+        const totalPages = pdf.numPages;
+        
+        const qPerChunk = parseInt(document.getElementById('chunkSlider').value);
+        let chunkedText = "";
+        const BATCH_PAGES = 15; 
+
+        for (let i = 1; i <= totalPages; i++) {
+            document.getElementById('progressMetrics').children[0].innerText = `Extracting Page ${i} of ${totalPages}`;
+            document.getElementById('progressBar').style.width = `${(i / totalPages) * 100}%`;
+
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            chunkedText += " " + content.items.map(it => it.str).join(' ');
+
+            // Process text every BATCH_PAGES to clear memory
+            if (i % BATCH_PAGES === 0 || i === totalPages) {
+                await new Promise(resolve => setTimeout(resolve, 50)); // Yield to UI
+                runHeuristicNLP(chunkedText, qPerChunk);
+                document.getElementById('qFoundCounter').innerText = `${appState.questions.length} Qs Found`;
+                chunkedText = ""; 
+            }
+        }
+
+        finalizeAndSave();
+    }
+
+    // -------------------------------------------------------------------
+    // HEURISTIC NLP ENGINE (No AI)
+    // -------------------------------------------------------------------
+    function runHeuristicNLP(text, limitPerChunk) {
+        // Read Settings
+        const useDef = document.getElementById('chkDef').checked;
+        const useDate = document.getElementById('chkDate').checked;
+        const useBlank = document.getElementById('chkBlank').checked;
+        const useStrict = document.getElementById('chkStrict').checked;
+
+        let cleanText = text.replace(/\s+/g, ' ');
+        // Split into rough sentences
+        let sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [];
+        let chunkQCount = 0;
+
+        // Patterns
+        const defPattern = useStrict ? 
+            /(?:The\s+)?([A-Z][a-z0-9_-]+(?:\s[A-Z][a-z0-9_-]+){0,3})\s+(?:is defined as|refers to|is a|are a)\s+([^.]{20,150})\./ :
+            /(?:The\s+)?([a-zA-Z0-9_-]+(?:\s[a-zA-Z0-9_-]+){0,2})\s+(?:is defined as|refers to)\s+([^.]{20,150})\./i;
+        
+        const datePattern = /\b(in|during|since|by)\s+(1[4-9]\d{2}|20\d{2})\b/;
+
+        for(let s of sentences) {
+            if(chunkQCount >= limitPerChunk * 5) break; // upper cap per batch
+
+            s = s.trim();
+            if(s.length < 30 || s.length > 250) continue;
+
+            // 1. Definition Extraction
+            if (useDef) {
+                const defMatch = s.match(defPattern);
+                if (defMatch && defMatch[1].length < 40) {
+                    appState.distractorPool.add(defMatch[1]);
                     appState.questions.push({
-                        type: 'Definition',
+                        id: 'q_' + Math.random().toString(36).substr(2, 9),
+                        type: 'Factual',
                         q: `What is the definition of ${defMatch[1]}?`,
-                        a: defMatch[2].trim(),
-                        rawTerm: defMatch[1] // Keep for distractor logic later
+                        a: defMatch[2].trim() + ".",
+                        rawTerm: defMatch[1]
                     });
-                    return;
+                    chunkQCount++;
+                    continue;
                 }
+            }
 
-                // Heuristic 2: Dates (Fill in the blank)
-                const dateMatch = sentence.match(dateRegex);
-                if (dateMatch && sentence.length < 120 && sentence.length > 30) {
+            // 2. Date / Fill-in-the-blank
+            if (useDate || useBlank) {
+                const dateMatch = s.match(datePattern);
+                if (dateMatch) {
                     const year = dateMatch[2];
-                    const questionStr = sentence.replace(year, '_______');
+                    const qStr = s.replace(year, '_______');
                     appState.questions.push({
+                        id: 'q_' + Math.random().toString(36).substr(2, 9),
                         type: 'Fill-Blank',
-                        q: questionStr.trim(),
+                        q: qStr,
                         a: year,
                         rawTerm: 'date'
                     });
-                }
-            });
-        }
-
-        function finalizePipeline() {
-            // Post-process: Generate realistic distractors for MCQs
-            const poolArr = Array.from(appState.distractorPool);
-            
-            appState.questions.forEach(q => {
-                q.options = [q.a]; // Start with correct answer
-                
-                if (q.type === 'Definition' && poolArr.length > 3) {
-                    // Pick random wrong definitions
-                    while(q.options.length < 4) {
-                        const randomTerm = poolArr[Math.floor(Math.random() * poolArr.length)];
-                        const fakeDef = appState.questions.find(x => x.rawTerm === randomTerm && x !== q)?.a;
-                        if (fakeDef && !q.options.includes(fakeDef)) q.options.push(fakeDef);
-                    }
-                } else if (q.type === 'Fill-Blank') {
-                    // Generate fake years near the correct year
-                    const yr = parseInt(q.a);
-                    q.options.push((yr - 5).toString(), (yr + 12).toString(), (yr - 20).toString());
-                } else {
-                    q.options.push("None of the above", "All of the above", "Information not provided in text");
-                }
-                
-                // Shuffle options
-                q.options.sort(() => Math.random() - 0.5);
-            });
-
-            // Fallback if PDF was pure images/no text
-            if(appState.questions.length === 0) {
-                alert("No extractable text found. Ensure the PDF is not purely scanned images.");
-                location.reload();
-                return;
-            }
-
-            // Move to Dashboard
-            views.processing.classList.add('hidden');
-            views.dashboard.classList.remove('hidden');
-            document.getElementById('dashQCount').innerText = appState.questions.length;
-            
-            initDashboard();
-        }
-
-        // ----------------------------------------------------
-        // 4. UI: DASHBOARD CONTROLLERS
-        // ----------------------------------------------------
-        function switchTab(tabName) {
-            // Update Tab Styling
-            document.querySelectorAll('.dash-tab').forEach(el => {
-                el.classList.remove('bg-purple-600', 'hover:bg-purple-500', 'text-white');
-                el.classList.add('bg-slate-800', 'hover:bg-slate-700');
-            });
-            const activeBtn = document.getElementById(`tab-${tabName}`);
-            activeBtn.classList.remove('bg-slate-800', 'hover:bg-slate-700');
-            activeBtn.classList.add('bg-purple-600', 'hover:bg-purple-500', 'text-white');
-
-            // Toggle Content
-            ['quiz', 'flashcard', 'editor'].forEach(t => {
-                document.getElementById(`content-${t}`).classList.add('hidden');
-                document.getElementById(`content-${t}`).classList.remove('flex');
-            });
-            document.getElementById(`content-${tabName}`).classList.remove('hidden');
-            document.getElementById(`content-${tabName}`).classList.add('flex');
-        }
-
-        // --- QUIZ PLAYER LOGIC ---
-        function initDashboard() {
-            renderQuizQuestion();
-            renderFlashcard();
-            renderEditorTable();
-        }
-
-        function renderQuizQuestion() {
-            const q = appState.questions[appState.quizIndex];
-            document.getElementById('quizCounter').innerText = `Q ${appState.quizIndex + 1} / ${appState.questions.length}`;
-            document.getElementById('quizType').innerText = q.type;
-            document.getElementById('quizQuestionText').innerText = q.q;
-            document.getElementById('quizProgress').style.width = `${((appState.quizIndex) / appState.questions.length) * 100}%`;
-            
-            const optionsContainer = document.getElementById('quizOptions');
-            optionsContainer.innerHTML = '';
-            document.getElementById('quizFeedback').classList.add('hidden');
-            document.getElementById('nextQuizBtn').classList.add('hidden');
-
-            q.options.forEach((opt, idx) => {
-                const btn = document.createElement('button');
-                btn.className = 'w-full text-left p-4 bg-[#131B2C] border border-slate-700 hover:border-purple-500 rounded-xl transition-all font-medium text-slate-300';
-                btn.innerText = opt;
-                btn.onclick = () => handleQuizAnswer(opt, btn);
-                optionsContainer.appendChild(btn);
-            });
-        }
-
-        function handleQuizAnswer(selected, btnElement) {
-            const q = appState.questions[appState.quizIndex];
-            const isCorrect = selected === q.a;
-            
-            // Disable all buttons
-            const buttons = document.getElementById('quizOptions').children;
-            for(let btn of buttons) {
-                btn.onclick = null;
-                btn.classList.add('opacity-50', 'cursor-not-allowed');
-                if (btn.innerText === q.a) {
-                    btn.classList.remove('bg-[#131B2C]', 'border-slate-700');
-                    btn.classList.add('bg-green-900/40', 'border-green-500', 'text-green-400', 'opacity-100');
+                    chunkQCount++;
                 }
             }
+        }
+    }
 
-            const feedback = document.getElementById('quizFeedback');
-            feedback.classList.remove('hidden');
-            if(isCorrect) {
-                btnElement.classList.remove('bg-[#131B2C]', 'opacity-50');
-                btnElement.classList.add('bg-green-900/40', 'border-green-500', 'opacity-100');
-                feedback.className = 'mt-6 p-4 rounded-lg font-semibold text-center bg-green-900/30 text-green-400 border border-green-800';
-                feedback.innerText = '✨ Correct!';
-            } else {
-                btnElement.classList.remove('bg-[#131B2C]');
-                btnElement.classList.add('bg-red-900/40', 'border-red-500', 'text-red-400');
-                feedback.className = 'mt-6 p-4 rounded-lg font-semibold text-center bg-red-900/30 text-red-400 border border-red-800';
-                feedback.innerText = 'Incorrect. Review the correct answer highlighted above.';
-            }
-
-            document.getElementById('nextQuizBtn').classList.remove('hidden');
+    async function finalizeAndSave() {
+        if(appState.questions.length === 0) {
+            alert("Could not generate questions. Ensure PDF has extractable text.");
+            resetToUpload();
+            return;
         }
 
-        function nextQuizQuestion() {
-            if (appState.quizIndex < appState.questions.length - 1) {
-                appState.quizIndex++;
-                renderQuizQuestion();
-            } else {
-                alert("Quiz Complete!");
-            }
-        }
+        // Apply Difficulty Distributions & Distractors
+        const easyP = parseInt(document.getElementById('diffEasy').value) / 100;
+        const medP = parseInt(document.getElementById('diffMed').value) / 100;
+        const totalQ = appState.questions.length;
+        
+        let poolArr = Array.from(appState.distractorPool);
 
-        // --- FLASHCARD LOGIC ---
-        function renderFlashcard() {
-            const q = appState.questions[appState.fcIndex];
-            document.getElementById('fcCounter').innerText = `Card ${appState.fcIndex + 1} / ${appState.questions.length}`;
-            document.getElementById('fcQuestion').innerText = q.q;
-            document.getElementById('fcAnswer').innerText = q.a;
+        appState.questions.forEach((q, idx) => {
+            // Pseudo-Difficulty based on requested distribution
+            let ratio = idx / totalQ;
+            if (ratio < easyP) q.diff = 'Easy';
+            else if (ratio < easyP + medP) q.diff = 'Medium';
+            else q.diff = 'Hard';
+
+            // Generate Distractors
+            q.options = [q.a];
+            if (q.type === 'Factual' && poolArr.length > 3) {
+                for(let i=0; i<3; i++) {
+                    let rTerm = poolArr[Math.floor(Math.random()*poolArr.length)];
+                    let fakeA = appState.questions.find(x => x.rawTerm === rTerm)?.a;
+                    if(fakeA && !q.options.includes(fakeA)) q.options.push(fakeA);
+                }
+            } else if (q.type === 'Fill-Blank') {
+                let y = parseInt(q.a);
+                q.options.push((y-10).toString(), (y+5).toString(), (y-2).toString());
+            }
+            // Pad if short
+            while(q.options.length < 4) q.options.push("None of the above");
             
-            // Ensure card is flipped to front
-            const inner = document.querySelector('.card-inner');
-            if(inner.classList.contains('rotate-y-180')) {
-                inner.classList.remove('rotate-y-180');
+            // Shuffle
+            q.options.sort(() => Math.random() - 0.5);
+        });
+
+        // Save
+        await saveCurrentDeck();
+
+        // Switch UI
+        views.processing.classList.add('hidden');
+        views.dashboard.classList.remove('hidden');
+        document.getElementById('dashTitle').innerText = appState.currentDocName;
+        document.getElementById('dashQCount').innerText = appState.questions.length;
+        document.getElementById('dashDate').innerText = "Just Now";
+
+        initDashboard();
+    }
+
+    // -------------------------------------------------------------------
+    // UI DASHBOARD ROUTING
+    // -------------------------------------------------------------------
+    function switchTab(tabName) {
+        document.querySelectorAll('.dash-tab').forEach(el => {
+            el.classList.remove('bg-purple-600', 'text-white', 'border-transparent');
+            el.classList.add('bg-[#131B2C]', 'text-slate-300', 'border-slate-700');
+        });
+        const activeBtn = document.getElementById(`tab-${tabName}`);
+        activeBtn.classList.remove('bg-[#131B2C]', 'border-slate-700');
+        activeBtn.classList.add('bg-purple-600', 'text-white', 'border-purple-600');
+
+        ['quiz', 'flashcard', 'editor'].forEach(t => {
+            document.getElementById(`content-${t}`).classList.add('hidden');
+            document.getElementById(`content-${t}`).classList.remove('flex');
+        });
+        document.getElementById(`content-${tabName}`).classList.remove('hidden');
+        document.getElementById(`content-${tabName}`).classList.add('flex');
+    }
+
+    function initDashboard() {
+        renderQuiz();
+        renderFlashcard();
+        renderEditor();
+    }
+
+    // --- QUIZ PLAYER ---
+    function renderQuiz() {
+        if(appState.questions.length === 0) return;
+        const q = appState.questions[appState.quizIndex];
+        
+        document.getElementById('quizCounter').innerText = `Q ${appState.quizIndex + 1} / ${appState.questions.length}`;
+        
+        const diffSpan = document.getElementById('quizDiff');
+        diffSpan.innerText = q.diff;
+        diffSpan.className = `px-3 py-1 rounded-md text-xs font-bold border ${
+            q.diff === 'Easy' ? 'bg-green-900/30 text-green-400 border-green-800' : 
+            q.diff === 'Medium' ? 'bg-yellow-900/30 text-yellow-400 border-yellow-800' : 
+            'bg-red-900/30 text-red-400 border-red-800'
+        }`;
+        
+        document.getElementById('quizType').innerText = q.type;
+        document.getElementById('quizQuestionText').innerText = q.q;
+        document.getElementById('quizProgress').style.width = `${((appState.quizIndex) / appState.questions.length) * 100}%`;
+        
+        const container = document.getElementById('quizOptions');
+        container.innerHTML = '';
+        document.getElementById('quizFeedback').classList.add('hidden');
+        document.getElementById('nextQuizBtn').classList.add('hidden');
+
+        q.options.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.className = 'w-full text-left p-5 bg-[#131B2C] border-2 border-slate-700 hover:border-purple-500 rounded-2xl transition-all font-medium text-slate-200 text-lg shadow-sm';
+            btn.innerText = opt;
+            btn.onclick = () => handleAnswer(opt, btn, q.a);
+            container.appendChild(btn);
+        });
+    }
+
+    function handleAnswer(selected, btn, correct) {
+        const buttons = document.getElementById('quizOptions').children;
+        for(let b of buttons) {
+            b.onclick = null;
+            b.classList.add('opacity-50');
+            if(b.innerText === correct) {
+                b.classList.remove('bg-[#131B2C]', 'border-slate-700', 'opacity-50');
+                b.classList.add('bg-green-900/40', 'border-green-500', 'text-green-300');
             }
         }
-
-        function nextFlashcard() {
-            if (appState.fcIndex < appState.questions.length - 1) {
-                appState.fcIndex++;
-                renderFlashcard();
-            }
+        
+        const feedback = document.getElementById('quizFeedback');
+        feedback.classList.remove('hidden');
+        
+        if(selected === correct) {
+            feedback.className = 'mt-8 p-5 rounded-xl font-bold text-center text-lg bg-green-900/30 text-green-400 border border-green-800';
+            feedback.innerText = '✨ Correct! Excellent job.';
+        } else {
+            btn.classList.remove('bg-[#131B2C]', 'opacity-50');
+            btn.classList.add('bg-red-900/40', 'border-red-500', 'text-red-300', 'opacity-100');
+            feedback.className = 'mt-8 p-5 rounded-xl font-bold text-center text-lg bg-red-900/30 text-red-400 border border-red-800';
+            feedback.innerText = 'Incorrect. Review the correct answer highlighted above.';
         }
-        function prevFlashcard() {
-            if (appState.fcIndex > 0) {
-                appState.fcIndex--;
-                renderFlashcard();
-            }
+        document.getElementById('nextQuizBtn').classList.remove('hidden');
+    }
+
+    function nextQuizQuestion() {
+        if (appState.quizIndex < appState.questions.length - 1) {
+            appState.quizIndex++;
+            renderQuiz();
         }
+    }
 
-        // --- EDITOR LOGIC ---
-        function renderEditorTable() {
-            const tbody = document.getElementById('editorTableBody');
-            // For extreme scale (1000+), we use fragment rendering
-            const fragment = document.createDocumentFragment();
-            
-            appState.questions.forEach((q, i) => {
-                const tr = document.createElement('tr');
-                tr.className = "hover:bg-[#1A233A] transition-colors";
-                tr.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap"><span class="bg-slate-800 px-2 py-1 rounded text-xs">${q.type}</span></td>
-                    <td class="px-6 py-4 font-medium text-slate-200">${q.q.substring(0, 80)}${q.q.length > 80 ? '...' : ''}</td>
-                    <td class="px-6 py-4 text-green-400">${q.a.substring(0, 40)}</td>
-                    <td class="px-6 py-4 text-red-400 cursor-pointer hover:underline" onclick="deleteQuestion(${i})">Remove</td>
-                `;
-                fragment.appendChild(tr);
-            });
-            tbody.innerHTML = '';
-            tbody.appendChild(fragment);
-        }
+    // --- FLASHCARDS ---
+    function renderFlashcard() {
+        if(appState.questions.length === 0) return;
+        const q = appState.questions[appState.fcIndex];
+        document.getElementById('fcCounter').innerText = `Card ${appState.fcIndex + 1} / ${appState.questions.length}`;
+        document.getElementById('fcQuestion').innerText = q.q;
+        document.getElementById('fcAnswer').innerText = q.a;
+        
+        const inner = document.querySelector('.card-inner');
+        if(inner.classList.contains('rotate-y-180')) inner.classList.remove('rotate-y-180');
+    }
+    function nextFlashcard() { if(appState.fcIndex < appState.questions.length - 1) { appState.fcIndex++; renderFlashcard(); } }
+    function prevFlashcard() { if(appState.fcIndex > 0) { appState.fcIndex--; renderFlashcard(); } }
 
-        function deleteQuestion(index) {
-            appState.questions.splice(index, 1);
-            document.getElementById('dashQCount').innerText = appState.questions.length;
-            renderEditorTable();
-            // Reset indexes to prevent out-of-bounds
-            appState.quizIndex = 0;
-            appState.fcIndex = 0;
-            renderQuizQuestion();
-            renderFlashcard();
-        }
+    // --- EDITOR ---
+    function renderEditor() {
+        const tbody = document.getElementById('editorTableBody');
+        const frag = document.createDocumentFragment();
+        
+        appState.questions.forEach((q, i) => {
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-[#1A233A] transition-colors";
+            tr.innerHTML = `
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="bg-slate-800 px-2 py-1 rounded text-xs text-slate-400 block mb-1 w-max">${q.type}</span>
+                    <span class="${q.diff==='Easy'?'text-green-500':q.diff==='Medium'?'text-yellow-500':'text-red-500'} text-xs font-bold">${q.diff}</span>
+                </td>
+                <td class="px-6 py-4 font-medium text-slate-200 text-sm">${q.q.substring(0, 100)}${q.q.length>100?'...':''}</td>
+                <td class="px-6 py-4 text-green-400 font-medium text-sm">${q.a.substring(0, 60)}${q.a.length>60?'...':''}</td>
+                <td class="px-6 py-4 text-center">
+                    <button class="bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white px-3 py-1.5 rounded-md text-xs font-bold transition-colors" onclick="delQ(${i})">Delete</button>
+                </td>
+            `;
+            frag.appendChild(tr);
+        });
+        tbody.innerHTML = '';
+        tbody.appendChild(frag);
+    }
 
-        // ----------------------------------------------------
-        // 5. HIGH-PERFORMANCE EXPORT (SheetJS)
-        // ----------------------------------------------------
-        function exportData() {
-            if(appState.questions.length === 0) return;
-            
-            // Format data for Excel
-            const exportData = appState.questions.map((q, idx) => ({
-                ID: idx + 1,
-                Type: q.type,
-                Question: q.q,
-                CorrectAnswer: q.a,
-                OptionA: q.options[0] || '',
-                OptionB: q.options[1] || '',
-                OptionC: q.options[2] || '',
-                OptionD: q.options[3] || ''
-            }));
+    async function delQ(idx) {
+        appState.questions.splice(idx, 1);
+        await saveCurrentDeck(); // Auto-save to DB
+        document.getElementById('dashQCount').innerText = appState.questions.length;
+        appState.quizIndex = 0; appState.fcIndex = 0;
+        initDashboard();
+    }
 
-            const worksheet = XLSX.utils.json_to_sheet(exportData);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "QuizForge Data");
-            
-            // Trigger download
-            XLSX.writeFile(workbook, "QuizForge_Generated_MCQs.xlsx");
-        }
+    // --- EXPORT ---
+    function exportData() {
+        if(!appState.questions.length) return;
+        const data = appState.questions.map((q, i) => ({
+            ID: i + 1, Difficulty: q.diff, Type: q.type, Question: q.q, CorrectAnswer: q.a,
+            Option1: q.options[0]||'', Option2: q.options[1]||'', Option3: q.options[2]||'', Option4: q.options[3]||''
+        }));
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "QuizData");
+        XLSX.writeFile(wb, `${appState.currentDocName.replace(/\s+/g,'_')}_Quiz.xlsx`);
+    }
+</script>
 
-    </script>
 </body>
 </html>
